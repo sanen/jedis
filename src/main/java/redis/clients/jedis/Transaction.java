@@ -2,7 +2,6 @@ package redis.clients.jedis;
 
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import redis.clients.jedis.exceptions.JedisDataException;
@@ -48,7 +47,7 @@ public class Transaction extends MultiKeyPipelineBase implements Closeable {
     if (unformatted == null) {
       return null;
     }
-    List<Object> formatted = new ArrayList<Object>();
+    List<Object> formatted = new ArrayList<>();
     for (Object o : unformatted) {
       try {
         formatted.add(generateResponse(o).get());
@@ -69,7 +68,7 @@ public class Transaction extends MultiKeyPipelineBase implements Closeable {
     if (unformatted == null) {
       return null;
     }
-    List<Response<?>> response = new ArrayList<Response<?>>();
+    List<Response<?>> response = new ArrayList<>();
     for (Object o : unformatted) {
       response.add(generateResponse(o));
     }

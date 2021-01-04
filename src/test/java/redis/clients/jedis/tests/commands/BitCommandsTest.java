@@ -3,13 +3,15 @@ package redis.clients.jedis.tests.commands;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import org.junit.Test;
 
 import redis.clients.jedis.BitOP;
 import redis.clients.jedis.BitPosParams;
 import redis.clients.jedis.Protocol;
-import redis.clients.util.SafeEncoder;
+import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.jedis.util.SafeEncoder;
 
 import java.util.List;
 
@@ -136,7 +138,7 @@ public class BitCommandsTest extends JedisCommandTestBase {
     long reply = jedis.setrange("key1", 6, "Jedis");
     assertEquals(11, reply);
 
-    assertEquals(jedis.get("key1"), "Hello Jedis");
+    assertEquals("Hello Jedis", jedis.get("key1"));
 
     assertEquals("Hello", jedis.getrange("key1", 0, 4));
     assertEquals("Jedis", jedis.getrange("key1", 6, 11));
@@ -185,11 +187,31 @@ public class BitCommandsTest extends JedisCommandTestBase {
     assertEquals("\u0077", resultNot);
   }
 
+  @Test(expected = redis.clients.jedis.exceptions.JedisDataException.class)
+  public void bitOpNotMultiSourceShouldFail() {
+    jedis.bitop(BitOP.NOT, "dest", "src1", "src2");
+  }
+
   @Test
   public void testBitfield() {
     List<Long> responses = jedis.bitfield("mykey", "INCRBY","i5","100","1", "GET", "u4", "0");
     assertEquals(1L, responses.get(0).longValue());
     assertEquals(0L, responses.get(1).longValue());
+  }
+
+  @Test
+  public void testBitfieldReadonly() {
+    List<Long> responses = jedis.bitfield("mykey", "INCRBY","i5","100","1", "GET", "u4", "0");
+    assertEquals(1L, responses.get(0).longValue());
+    assertEquals(0L, responses.get(1).longValue());
+
+    List<Long> responses2 = jedis.bitfieldReadonly("mykey", "GET", "i5", "100");
+    assertEquals(1L, responses2.get(0).longValue());
+    
+    try {
+      jedis.bitfieldReadonly("mykey", "INCRBY","i5","100","1", "GET", "u4", "0");
+      fail("Readonly command shouldn't allow INCRBY");
+    }catch(JedisDataException e) {}
   }
 
   @Test
@@ -200,6 +222,17 @@ public class BitCommandsTest extends JedisCommandTestBase {
     );
     assertEquals(1L, responses.get(0).longValue());
     assertEquals(0L, responses.get(1).longValue());
+  }
+
+  @Test
+  public void testBinaryBitfieldReadonly() {
+    List<Long> responses = jedis.bitfield("mykey", "INCRBY","i5","100","1", "GET", "u4", "0");
+    assertEquals(1L, responses.get(0).longValue());
+    assertEquals(0L, responses.get(1).longValue());
+
+    List<Long> responses2 = jedis.bitfieldReadonly(SafeEncoder.encode("mykey"), SafeEncoder.encode("GET"),
+        SafeEncoder.encode("i5"), SafeEncoder.encode("100"));
+    assertEquals(1L, responses2.get(0).longValue());
   }
 
 }

@@ -5,20 +5,38 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
+import static redis.clients.jedis.Protocol.Command.BLPOP;
+import static redis.clients.jedis.Protocol.Command.HGETALL;
+import static redis.clients.jedis.Protocol.Command.GET;
+import static redis.clients.jedis.Protocol.Command.LRANGE;
+import static redis.clients.jedis.Protocol.Command.PING;
+import static redis.clients.jedis.Protocol.Command.RPUSH;
+import static redis.clients.jedis.Protocol.Command.SET;
+import static redis.clients.jedis.Protocol.Command.XINFO;
 import static redis.clients.jedis.ScanParams.SCAN_POINTER_START;
 import static redis.clients.jedis.ScanParams.SCAN_POINTER_START_BINARY;
-import static redis.clients.jedis.params.set.SetParams.setParams;
+import static redis.clients.jedis.params.SetParams.setParams;
+import static redis.clients.jedis.tests.utils.AssertUtil.assertCollectionContains;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.Test;
+import redis.clients.jedis.Jedis;
 
 import redis.clients.jedis.Protocol.Keyword;
 import redis.clients.jedis.ScanParams;
 import redis.clients.jedis.ScanResult;
-import redis.clients.util.SafeEncoder;
+import redis.clients.jedis.StreamEntryID;
+import redis.clients.jedis.util.SafeEncoder;
+import redis.clients.jedis.exceptions.JedisDataException;
 
 public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
   final byte[] bfoo = { 0x01, 0x02, 0x03, 0x04 };
@@ -42,6 +60,14 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
   public void ping() {
     String status = jedis.ping();
     assertEquals("PONG", status);
+  }
+
+  @Test
+  public void pingWithMessage() {
+    String argument = "message";
+    assertEquals(argument, jedis.ping(argument));
+    
+    assertArrayEquals(bfoobar, jedis.ping(bfoobar));
   }
 
   @Test
@@ -138,6 +164,46 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
   }
 
   @Test
+  public void unlink() {
+    jedis.set("foo1", "bar1");
+    jedis.set("foo2", "bar2");
+    jedis.set("foo3", "bar3");
+
+    long reply = jedis.unlink("foo1", "foo2", "foo3");
+    assertEquals(3, reply);
+
+    reply = jedis.exists("foo1", "foo2", "foo3");
+    assertEquals(0, reply);
+
+    jedis.set("foo1", "bar1");
+
+    reply = jedis.unlink("foo1", "foo2");
+    assertEquals(1, reply);
+
+    reply = jedis.unlink("foo1", "foo2");
+    assertEquals(0, reply);
+
+    // Binary ...
+    jedis.set(bfoo1, bbar1);
+    jedis.set(bfoo2, bbar2);
+    jedis.set(bfoo3, bbar3);
+
+    reply = jedis.unlink(bfoo1, bfoo2, bfoo3);
+    assertEquals(3, reply);
+
+    reply = jedis.exists(bfoo1, bfoo2, bfoo3);
+    assertEquals(0, reply);
+
+    jedis.set(bfoo1, bbar1);
+
+    reply = jedis.unlink(bfoo1, bfoo2);
+    assertEquals(1, reply);
+
+    reply = jedis.unlink(bfoo1, bfoo2);
+    assertEquals(0, reply);
+  }
+
+  @Test
   public void type() {
     jedis.set("foo", "bar");
     String status = jedis.type("foo");
@@ -155,12 +221,12 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     jedis.set("foobar", "bar");
 
     Set<String> keys = jedis.keys("foo*");
-    Set<String> expected = new HashSet<String>();
+    Set<String> expected = new HashSet<>();
     expected.add("foo");
     expected.add("foobar");
     assertEquals(expected, keys);
 
-    expected = new HashSet<String>();
+    expected = new HashSet<>();
     keys = jedis.keys("bar*");
 
     assertEquals(expected, keys);
@@ -171,8 +237,8 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
 
     Set<byte[]> bkeys = jedis.keys(bfoostar);
     assertEquals(2, bkeys.size());
-    assertTrue(setContains(bkeys, bfoo));
-    assertTrue(setContains(bkeys, bfoobar));
+    assertCollectionContains(bkeys, bfoo);
+    assertCollectionContains(bkeys, bfoobar);
 
     bkeys = jedis.keys(bbarstar);
 
@@ -181,7 +247,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
 
   @Test
   public void randomKey() {
-    assertEquals(null, jedis.randomKey());
+    assertNull(jedis.randomKey());
 
     jedis.set("foo", "bar");
 
@@ -195,7 +261,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     // Binary
     jedis.del("foo");
     jedis.del("bar");
-    assertEquals(null, jedis.randomKey());
+    assertNull(jedis.randomKey());
 
     jedis.set(bfoo, bbar);
 
@@ -215,7 +281,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     assertEquals("OK", status);
 
     String value = jedis.get("foo");
-    assertEquals(null, value);
+    assertNull(value);
 
     value = jedis.get("bar");
     assertEquals("bar", value);
@@ -226,7 +292,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     assertEquals("OK", bstatus);
 
     byte[] bvalue = jedis.get(bfoo);
-    assertEquals(null, bvalue);
+    assertNull(bvalue);
 
     bvalue = jedis.get(bbar);
     assertArrayEquals(bbar, bvalue);
@@ -234,12 +300,12 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
 
   @Test
   public void renameOldAndNewAreTheSame() {
-    jedis.set("foo", "bar");
-    jedis.rename("foo", "foo");
+    assertEquals("OK", jedis.set("foo", "bar"));
+    assertEquals("OK", jedis.rename("foo", "foo"));
 
     // Binary
-    jedis.set(bfoo, bbar);
-    jedis.rename(bfoo, bfoo);
+    assertEquals("OK", jedis.set(bfoo, bbar));
+    assertEquals("OK", jedis.rename(bfoo, bfoo));
   }
 
   @Test
@@ -348,11 +414,60 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
   }
 
   @Test
+  public void touch() throws Exception {
+    long reply = jedis.touch("foo1", "foo2", "foo3");
+    assertEquals(0, reply);
+
+    jedis.set("foo1", "bar1");
+
+    Thread.sleep(1100); // little over 1 sec
+    assertTrue(jedis.objectIdletime("foo1") > 0);
+
+    reply = jedis.touch("foo1");
+    assertEquals(1, reply);
+    assertEquals(0L, jedis.objectIdletime("foo1").longValue());
+
+    reply = jedis.touch("foo1", "foo2", "foo3");
+    assertEquals(1, reply);
+
+    jedis.set("foo2", "bar2");
+
+    jedis.set("foo3", "bar3");
+
+    reply = jedis.touch("foo1", "foo2", "foo3");
+    assertEquals(3, reply);
+
+    // Binary
+    reply = jedis.touch(bfoo1, bfoo2, bfoo3);
+    assertEquals(0, reply);
+
+    jedis.set(bfoo1, bbar1);
+
+    Thread.sleep(1100); // little over 1 sec
+    assertTrue(jedis.objectIdletime(bfoo1) > 0);
+
+    reply = jedis.touch(bfoo1);
+    assertEquals(1, reply);
+    assertEquals(0L, jedis.objectIdletime(bfoo1).longValue());
+
+    reply = jedis.touch(bfoo1, bfoo2, bfoo3);
+    assertEquals(1, reply);
+
+    jedis.set(bfoo2, bbar2);
+
+    jedis.set(bfoo3, bbar3);
+
+    reply = jedis.touch(bfoo1, bfoo2, bfoo3);
+    assertEquals(3, reply);
+
+  }
+
+  @Test
   public void select() {
     jedis.set("foo", "bar");
     String status = jedis.select(1);
     assertEquals("OK", status);
-    assertEquals(null, jedis.get("foo"));
+    assertNull(jedis.get("foo"));
     status = jedis.select(0);
     assertEquals("OK", status);
     assertEquals("bar", jedis.get("foo"));
@@ -360,7 +475,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     jedis.set(bfoo, bbar);
     String bstatus = jedis.select(1);
     assertEquals("OK", bstatus);
-    assertEquals(null, jedis.get(bfoo));
+    assertNull(jedis.get(bfoo));
     bstatus = jedis.select(0);
     assertEquals("OK", bstatus);
     assertArrayEquals(bbar, jedis.get(bfoo));
@@ -381,7 +496,7 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     jedis.set("foo", "bar");
     status = jedis.move("foo", 1);
     assertEquals(1, status);
-    assertEquals(null, jedis.get("foo"));
+    assertNull(jedis.get("foo"));
 
     jedis.select(1);
     assertEquals("bar", jedis.get("foo"));
@@ -394,11 +509,39 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     jedis.set(bfoo, bbar);
     bstatus = jedis.move(bfoo, 1);
     assertEquals(1, bstatus);
-    assertEquals(null, jedis.get(bfoo));
+    assertNull(jedis.get(bfoo));
 
     jedis.select(1);
     assertArrayEquals(bbar, jedis.get(bfoo));
 
+  }
+
+  @Test
+  public void swapDB() {
+    jedis.set("foo1", "bar1");
+    jedis.select(1);
+    assertNull(jedis.get("foo1"));
+    jedis.set("foo2", "bar2");
+    String status = jedis.swapDB(0, 1);
+    assertEquals("OK", status);
+    assertEquals("bar1", jedis.get("foo1"));
+    assertNull(jedis.get("foo2"));
+    jedis.select(0);
+    assertNull(jedis.get("foo1"));
+    assertEquals("bar2", jedis.get("foo2"));
+
+    // Binary
+    jedis.set(bfoo1, bbar1);
+    jedis.select(1);
+    assertArrayEquals(null, jedis.get(bfoo1));
+    jedis.set(bfoo2, bbar2);
+    status = jedis.swapDB(0, 1);
+    assertEquals("OK", status);
+    assertArrayEquals(bbar1, jedis.get(bfoo1));
+    assertArrayEquals(null, jedis.get(bfoo2));
+    jedis.select(0);
+    assertArrayEquals(null, jedis.get(bfoo1));
+    assertArrayEquals(bbar2, jedis.get(bfoo2));
   }
 
   @Test
@@ -483,10 +626,40 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
 
   @Test
   public void dumpAndRestore() {
-    jedis.set("foo1", "bar1");
+    jedis.set("foo1", "bar");
     byte[] sv = jedis.dump("foo1");
     jedis.restore("foo2", 0, sv);
-    assertTrue(jedis.exists("foo2"));
+    assertEquals("bar", jedis.get("foo2"));
+  }
+
+  @Test
+  public void restoreReplace() {
+    // take a separate instance
+    Jedis jedis2 = new Jedis(hnp.getHost(), 6380, 500);
+    jedis2.auth("foobared");
+    jedis2.flushAll();
+
+    jedis2.set("foo", "bar");
+
+    Map<String, String> map = new HashMap<>();
+    map.put("a", "A");
+    map.put("b", "B");
+
+    jedis.hset("from", map);
+    byte[] serialized = jedis.dump("from");
+
+    try {
+      jedis2.restore("foo", 0, serialized);
+      fail("Simple restore on a existing key should fail");
+    } catch(JedisDataException e) {
+      // should be here
+    }
+    assertEquals("bar", jedis2.get("foo"));
+
+    jedis2.restoreReplace("foo", 0, serialized);
+    assertEquals(map, jedis2.hgetAll("foo"));
+
+    jedis2.close();
   }
 
   @Test
@@ -673,4 +846,87 @@ public class AllKindOfValuesCommandsTest extends JedisCommandTestBase {
     long bttl = jedis.ttl(bworld);
     assertTrue(bttl > 0 && bttl <= expireSeconds);
   }
+
+  @Test
+  public void setGetOptionTest() {
+    String status = jedis.set("hello", "world");
+    assertTrue(Keyword.OK.name().equalsIgnoreCase(status));
+
+    String oldValue = jedis.set("hello", "jedis", setParams().get());
+    assertEquals("world", oldValue);
+
+    String newValue = jedis.get("hello");
+    assertEquals("jedis", newValue);
+
+    String nullValue = jedis.set("key", "value", setParams().get());
+    assertNull(nullValue);
+  }
+
+  @Test
+  public void sendCommandTest(){
+    Object obj = jedis.sendCommand(SET, "x", "1");
+    String returnValue = SafeEncoder.encode((byte[]) obj);
+    assertEquals("OK", returnValue);
+    obj = jedis.sendCommand(GET, "x");
+    returnValue = SafeEncoder.encode((byte[]) obj);
+    assertEquals("1", returnValue);
+
+    jedis.sendCommand(RPUSH,"foo", "a");
+    jedis.sendCommand(RPUSH,"foo", "b");
+    jedis.sendCommand(RPUSH,"foo", "c");
+
+    obj = jedis.sendCommand(LRANGE,"foo", "0", "2");
+    List<byte[]> list = (List<byte[]>) obj;
+    List<byte[]> expected = new ArrayList<>(3);
+    expected.add("a".getBytes());
+    expected.add("b".getBytes());
+    expected.add("c".getBytes());
+    for (int i = 0; i < 3; i++)
+      assertArrayEquals(expected.get(i), list.get(i));
+
+    assertEquals("PONG", SafeEncoder.encode((byte[]) jedis.sendCommand(PING)));
+  }
+
+  @Test
+  public void sendBlockingCommandTest(){
+    assertNull(jedis.sendBlockingCommand(BLPOP, "foo", Long.toString(1L)));
+
+    jedis.sendCommand(RPUSH, "foo", "bar");
+    assertEquals(Arrays.asList("foo", "bar"), SafeEncoder.encodeObject(jedis.sendBlockingCommand(BLPOP, "foo", Long.toString(1L))));
+
+    assertNull(jedis.sendBlockingCommand(BLPOP, "foo", Long.toString(1L)));
+  }
+
+  @Test
+  public void encodeCompleteResponse(){
+    HashMap<String,String> entry = new HashMap<>();
+    entry.put("foo", "bar");
+    jedis.xadd( "mystream", StreamEntryID.NEW_ENTRY, entry );
+    String status = jedis.xgroupCreate("mystream", "mygroup", null, false);
+
+    Object obj = jedis.sendCommand(XINFO, "STREAM", "mystream");
+    List encodeObj =  (List)SafeEncoder.encodeObject(obj);
+
+    assertEquals( 14, encodeObj.size() );
+    assertEquals( "length", encodeObj.get(0) );
+    assertEquals( 1L, encodeObj.get(1) );
+
+    List<String> entryAsList = new ArrayList<>(2);
+    entryAsList.add("foo");
+    entryAsList.add("bar");
+
+    assertEquals( entryAsList, ((List)encodeObj.get(11)).get(1) );
+
+    assertEquals("PONG", SafeEncoder.encodeObject(jedis.sendCommand(PING)));
+
+    entry.put("foo2", "bar2");
+    jedis.hset("hash:test:encode", entry);
+    encodeObj =   (List)SafeEncoder.encodeObject(jedis.sendCommand(HGETALL, "hash:test:encode"));
+
+    assertEquals( 4, encodeObj.size() );
+    assertTrue(encodeObj.contains("foo"));
+    assertTrue(encodeObj.contains("foo2"));
+
+  }
+
 }

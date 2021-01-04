@@ -1,12 +1,25 @@
 package redis.clients.jedis.commands;
 
-import redis.clients.jedis.*;
+import redis.clients.jedis.BitOP;
+import redis.clients.jedis.GeoUnit;
+import redis.clients.jedis.StreamEntryID;
+import redis.clients.jedis.JedisPubSub;
+import redis.clients.jedis.ScanParams;
+import redis.clients.jedis.ScanResult;
+import redis.clients.jedis.SortingParams;
+import redis.clients.jedis.StreamEntry;
+import redis.clients.jedis.ZParams;
+import redis.clients.jedis.params.GeoRadiusParam;
+import redis.clients.jedis.params.GeoRadiusStoreParam;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public interface MultiKeyCommands {
   Long del(String... keys);
+
+  Long unlink(String... keys);
 
   Long exists(String... keys);
 
@@ -100,12 +113,15 @@ public interface MultiKeyCommands {
 
   String randomKey();
 
-  Long bitop(BitOP op, final String destKey, String... srcKeys);
+  Long bitop(BitOP op, String destKey, String... srcKeys);
 
   /**
    * @see #scan(String, ScanParams)
+   * 
+   * @param cursor
+   * @return 
    */
-  ScanResult<String> scan(final String cursor);
+  ScanResult<String> scan(String cursor);
 
   /**
    * Iterates the set of keys in the currently selected Redis database.
@@ -148,9 +164,39 @@ public interface MultiKeyCommands {
    * @return the scan result with the results of this iteration and the new position of the cursor
    * @see <a href="https://redis.io/commands/scan">Redis SCAN documentation</a>
    */
-  ScanResult<String> scan(final String cursor, final ScanParams params);
+  ScanResult<String> scan(String cursor, ScanParams params);
 
-  String pfmerge(final String destkey, final String... sourcekeys);
+  String pfmerge(String destkey, String... sourcekeys);
 
-  long pfcount(final String... keys);
+  long pfcount(String... keys);
+
+  Long touch(String... keys);
+  
+  /**
+   * XREAD [COUNT count] [BLOCK milliseconds] STREAMS key [key ...] ID [ID ...]
+   * 
+   * @param count
+   * @param block
+   * @param streams
+   * @return
+   */
+  List<Map.Entry<String, List<StreamEntry>>> xread(int count, long block, Map.Entry<String, StreamEntryID>... streams);
+
+  /**
+   * XREAD [COUNT count] [BLOCK milliseconds] STREAMS key [key ...] ID [ID ...]
+   * 
+   * @param groupname
+   * @param consumer
+   * @param count
+   * @param block
+   * @param streams
+   * @return
+   */
+  List<Map.Entry<String, List<StreamEntry>>> xreadGroup(String groupname, String consumer, int count, long block, final boolean noAck, Map.Entry<String, StreamEntryID>... streams);
+
+  Long georadiusStore(String key, double longitude, double latitude, double radius,
+      GeoUnit unit, GeoRadiusParam param, GeoRadiusStoreParam storeParam);
+
+  Long georadiusByMemberStore(String key, String member, double radius, GeoUnit unit,
+      GeoRadiusParam param, GeoRadiusStoreParam storeParam);
 }

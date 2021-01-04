@@ -4,10 +4,12 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
 import static redis.clients.jedis.ScanParams.SCAN_POINTER_START;
 import static redis.clients.jedis.ScanParams.SCAN_POINTER_START_BINARY;
 import static redis.clients.jedis.tests.utils.AssertUtil.assertByteArrayListEquals;
 import static redis.clients.jedis.tests.utils.AssertUtil.assertByteArraySetEquals;
+import static redis.clients.jedis.tests.utils.AssertUtil.assertCollectionContains;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,14 +54,14 @@ public class HashesCommandsTest extends JedisCommandTestBase {
   @Test
   public void hget() {
     jedis.hset("foo", "bar", "car");
-    assertEquals(null, jedis.hget("bar", "foo"));
-    assertEquals(null, jedis.hget("foo", "car"));
+    assertNull(jedis.hget("bar", "foo"));
+    assertNull(jedis.hget("foo", "car"));
     assertEquals("car", jedis.hget("foo", "bar"));
 
     // Binary
     jedis.hset(bfoo, bbar, bcar);
-    assertEquals(null, jedis.hget(bbar, bfoo));
-    assertEquals(null, jedis.hget(bfoo, bcar));
+    assertNull(jedis.hget(bbar, bfoo));
+    assertNull(jedis.hget(bfoo, bcar));
     assertArrayEquals(bcar, jedis.hget(bfoo, bbar));
   }
 
@@ -111,6 +113,26 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertArrayEquals(bcar, jedis.hget(bfoo, bbar));
     assertArrayEquals(bbar, jedis.hget(bfoo, bcar));
 
+  }
+
+  @Test
+  public void hsetVariadic() {
+    Map<String, String> hash = new HashMap<String, String>();
+    hash.put("bar", "car");
+    hash.put("car", "bar");
+    long status = jedis.hset("foo", hash);
+    assertEquals(2, status);
+    assertEquals("car", jedis.hget("foo", "bar"));
+    assertEquals("bar", jedis.hget("foo", "car"));
+
+    // Binary
+    Map<byte[], byte[]> bhash = new HashMap<byte[], byte[]>();
+    bhash.put(bbar, bcar);
+    bhash.put(bcar, bbar);
+    status = jedis.hset(bfoo, bhash);
+    assertEquals(2, status);
+    assertArrayEquals(bcar, jedis.hget(bfoo, bbar));
+    assertArrayEquals(bbar, jedis.hget(bfoo, bcar));
   }
 
   @Test
@@ -169,15 +191,15 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     value = jedis.hincrByFloat("foo", "bar", -1.5d);
     assertEquals((Double) 0d, value);
     value = jedis.hincrByFloat("foo", "bar", -10.7d);
-    assertEquals(Double.compare(-10.7d, value), 0);
+    assertEquals(Double.valueOf(-10.7d), value);
 
     // Binary
     double bvalue = jedis.hincrByFloat(bfoo, bbar, 1.5d);
-    assertEquals(Double.compare(1.5d, bvalue), 0);
+    assertEquals(1.5d, bvalue, 0d);
     bvalue = jedis.hincrByFloat(bfoo, bbar, -1.5d);
-    assertEquals(Double.compare(0d, bvalue), 0);
+    assertEquals(0d, bvalue, 0d);
     bvalue = jedis.hincrByFloat(bfoo, bbar, -10.7d);
-    assertEquals(Double.compare(-10.7d, value), 0);
+    assertEquals(-10.7d, bvalue, 0d);
 
   }
 
@@ -214,7 +236,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertEquals(0, jedis.hdel("bar", "foo").intValue());
     assertEquals(0, jedis.hdel("foo", "foo").intValue());
     assertEquals(1, jedis.hdel("foo", "bar").intValue());
-    assertEquals(null, jedis.hget("foo", "bar"));
+    assertNull(jedis.hget("foo", "bar"));
 
     // Binary
     Map<byte[], byte[]> bhash = new HashMap<byte[], byte[]>();
@@ -225,7 +247,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertEquals(0, jedis.hdel(bbar, bfoo).intValue());
     assertEquals(0, jedis.hdel(bfoo, bfoo).intValue());
     assertEquals(1, jedis.hdel(bfoo, bbar).intValue());
-    assertEquals(null, jedis.hget(bfoo, bbar));
+    assertNull(jedis.hget(bfoo, bbar));
 
   }
 
@@ -297,8 +319,8 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     List<byte[]> bvals = jedis.hvals(bfoo);
 
     assertEquals(2, bvals.size());
-    assertTrue(arrayContains(bvals, bbar));
-    assertTrue(arrayContains(bvals, bcar));
+    assertCollectionContains(bvals, bbar);
+    assertCollectionContains(bvals, bcar);
   }
 
   @Test
